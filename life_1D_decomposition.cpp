@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <vector>
+
+using namespace std;
 
 // t: timestep (0 or 1)
 // X: width of the array
@@ -51,18 +54,22 @@ int main(int argc, char** argv)
 
     // printf("Process %d working on %d->%d\n", pid, lo, high);
 
+
     if(pid == 0)
     {
+        vector< vector< int > > input_dataX, input_dataY;
+        vector<int> empty_row;
         // Get the bounadries of the other processes, so that we know whom to send.
         int *boundaries = (int*) malloc(sizeof(int) * numProcessors);
         for (int i=0; i<numProcessors; i++)
         {
             int temp;
             getWorkingRows(i, numProcessors, Y, &temp, boundaries + i);
+            input_dataX.push_back(empty_row);
+            input_dataY.push_back(empty_row);
         }
 
         FILE *fp = fopen(argv[1], "r");
-        int x, y;
         int coord[2];
         while(fscanf(fp, "%d%d", &coord[0], &coord[1]) != EOF)
         {
@@ -79,7 +86,9 @@ int main(int argc, char** argv)
                 {
                     // Belongs to process i.
                     // coord[0] = x; coord[1] = y;
-                    MPI_Send(coord, 2, MPI_INT, i, tag, MPI_COMM_WORLD);
+                    input_dataX[i].push_back(coord[0]);
+                    input_dataY[i].push_back(coord[1]);
+                    // MPI_Send(coord, 2, MPI_INT, i, tag, MPI_COMM_WORLD);
                     break;
                 }
             }
@@ -88,7 +97,16 @@ int main(int argc, char** argv)
         // Send done to all processes.
         coord[0] = coord[1] = -1;
         for(int i=1; i<numProcessors; i++)
-            MPI_Send(coord, 2, MPI_INT, i, tag, MPI_COMM_WORLD);
+        {
+            // MPI_Send(coord, 2, MPI_INT, i, tag, MPI_COMM_WORLD);
+            // Send the number of elements which will be sent.
+            int size = input_dataX[i].size();
+            MPI_Send(&size, 1, MPI_INT, i, tag, MPI_COMM_WORLD);
+
+            // Send the vector.
+            MPI_Send(&input_dataX[i].front(), input_dataX[i].size(), MPI_INT, i, tag, MPI_COMM_WORLD);
+            MPI_Send(&input_dataY[i].front(), input_dataY[i].size(), MPI_INT, i, tag, MPI_COMM_WORLD);
+        }
 
         fclose(fp);
     }
@@ -96,25 +114,29 @@ int main(int argc, char** argv)
     {
         int done = 0;
         int coord[2];
-        // In a loop, keep receiving messages.
-        // If you get a termination message, move out and wait.
-        while(!done)
-        {
-            MPI_Recv(coord, 2, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
-            // printf("Process %d received %d %d\n", pid, coord[0], coord[1]);
+        int size;
+        int *inputX, *inputY;
+        
+        // MPI_Recv(coord, 2, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
+        MPI_Recv(&size, 1, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
+        inputX = (int*) malloc(sizeof(int) * size);
+        inputY = (int*) malloc(sizeof(int) * size);
 
-            if(coord[0] == -1 && coord[1] == -1)
-                done = 1;
-            else
-            {
-                buffer[IDX(coord[0], coord[1] - lo + 1, 0, X, numRows)] = 1;
-                // printf("%d belongs to process %d, putting at %d\n", coord[1], pid, coord[1] - lo + 1);
-            }
+        MPI_Recv(inputX, size, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
+        MPI_Recv(inputY, size, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
+        // printf("Process %d received %d %d\n", pid, coord[0], coord[1]);
+
+        for(int i=0; i<size; i++)
+        {
+            buffer[IDX(inputX[i], inputY[i] - lo + 1, 0, X, numRows)] = 1;
         }
+
+        free(inputX);
+        free(inputY);
     }
 
     // Reading complete, should synchronize here?
-    // MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
 
 
     MPI_Request request[2], send_req[2];
@@ -125,7 +147,6 @@ int main(int argc, char** argv)
         // Non blocking receive from the process above
         if(pid > 0)
         {
-            // printf("%d/%d\n", buffer[IDX(0, 0, currentTimestep, X, numRows)], numRows * X * 2);
             err_code = MPI_Irecv(&buffer[IDX(0, 0, currentTimestep, X, numRows)], 
                                 X, MPI_INT, pid - 1, tag, MPI_COMM_WORLD, &request[0]);
             if(err_code != MPI_SUCCESS)
@@ -136,7 +157,6 @@ int main(int argc, char** argv)
         // Non blocking receive from the process below
         if(pid < numProcessors - 1)
         {
-            // printf("%d/%d\n", buffer[IDX(0, numRows-1, currentTimestep, X, numRows)], numRows * X * 2);
             err_code = MPI_Irecv(&buffer[IDX(0, numRows-1, currentTimestep, X, numRows)],
                                 X, MPI_INT, pid + 1, tag, MPI_COMM_WORLD, &request[1]);
             if(err_code != MPI_SUCCESS)
@@ -148,7 +168,6 @@ int main(int argc, char** argv)
         // Non blocking send to the process below
         if(pid < numProcessors - 1)
         {
-            // printf("%d/%d\n", buffer[IDX(0, numRows-2, currentTimestep, X, numRows)], numRows * X * 2);
             err_code = MPI_Isend(&buffer[IDX(0, numRows-2, currentTimestep, X, numRows)],
                                 X, MPI_INT, pid + 1, tag, MPI_COMM_WORLD, &send_req[0]);
 
@@ -162,7 +181,6 @@ int main(int argc, char** argv)
         // Non blocking send to the process above
         if(pid > 0)
         {
-            // printf("%d/%d\n", buffer[IDX(0, 1, currentTimestep, X, numRows)], numRows * X * 2);
             err_code = MPI_Isend(&buffer[IDX(0, 1, currentTimestep, X, numRows)],
                                 X, MPI_INT, pid - 1, tag, MPI_COMM_WORLD, &send_req[1]);
             if(err_code != MPI_SUCCESS)
@@ -211,9 +229,8 @@ int main(int argc, char** argv)
         }
 
 
-        /*
         // Wait for boundary data to be received.
-        if(pid > 0)
+        /*if(pid > 0)
         {
             MPI_Wait(&request[0], &recv_status[0]);
             simulateRow(1, X, numRows, currentTimestep, buffer);
@@ -228,9 +245,8 @@ int main(int argc, char** argv)
             // printf("Process %d received from %d\n", pid, pid + 1);
             // printRow(&buffer[IDX(0, numRows-1, currentTimestep, X, numRows)], X);
             
-        }
-        */
-     
+        }*/
+       
         currentTimestep = 1 - currentTimestep;
         MPI_Barrier(MPI_COMM_WORLD);
     }
@@ -311,7 +327,6 @@ void simulateRow(int y, int X, int numRows, int currentTimestep, int *buffer)
         if(buffer[IDX(x, y, currentTimestep, X, numRows)] == 1)
         {
             // Cell was alive.
-            // printf("%d/%d\n", IDX(x, y, 1 - currentTimestep, X, numRows), numRows * X * 2);
             if(num_neighbours == 2 || num_neighbours == 3)
                 buffer[IDX(x, y, 1 - currentTimestep, X, numRows)] = 1;
             else
@@ -319,7 +334,6 @@ void simulateRow(int y, int X, int numRows, int currentTimestep, int *buffer)
         }
         else
         {
-            // printf("%d/%d\n", IDX(x, y, 1 - currentTimestep, X, numRows), numRows * X * 2);
             if(num_neighbours == 3)
                 buffer[IDX(x, y, 1 - currentTimestep, X, numRows)] = 1;
             else
