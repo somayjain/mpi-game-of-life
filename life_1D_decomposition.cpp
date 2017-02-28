@@ -94,7 +94,7 @@ int main(int argc, char** argv)
             }
         }
 
-        // Send done to all processes.
+        // Send to all processes.
         coord[0] = coord[1] = -1;
         for(int i=1; i<numProcessors; i++)
         {
