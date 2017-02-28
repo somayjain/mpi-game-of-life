@@ -27,6 +27,7 @@ int simulatePartialRow(int y, int fromX, int tillX, int maxX, int maxY, int curr
 void simulateHelper(int x, int y, int maxX, int maxY, int currentTimestep, int *buffer);
 bool isInsideGrid(int* coord, SubGrid grid);
 int isInside(int x, int y, int X, int Y);
+int getNeighbours(int x, int y, int X, int Y, int currentTimestep, int *buffer);
 
 int main(int argc, char** argv)
 {
@@ -370,21 +371,8 @@ void getGridWorkingDims(SubGrid *grid, int coord[2], int dims[2], int X, int Y, 
 
 void simulateHelper(int x, int y, int maxX, int maxY, int currentTimestep, int *buffer)
 {
-    int dirx[8] = { 0,  1,  1,  1,  0, -1, -1,  -1};
-    int diry[8] = {-1, -1,  0,  1,  1,  1,  0,  -1};
-
-    int num_neighbours = 0;
-    for(int k=0; k<8; k++)
-    {
-        int neighbourX = x + dirx[k];
-        int neighbourY = y + diry[k];
-        // Check if this is inside
-        if(isInside(neighbourX, neighbourY, maxX, maxY))
-        {
-            if(buffer[IDX(neighbourX, neighbourY, currentTimestep, maxX, maxY)] == 1)
-                num_neighbours += 1;
-        }
-    }
+    int num_neighbours = getNeighbours(x, y, maxX, maxY, currentTimestep, buffer);
+    
     if(buffer[IDX(x, y, currentTimestep, maxX, maxY)] == 1)
     {
         // Cell was alive.
@@ -449,4 +437,42 @@ int isInside(int x, int y, int X, int Y)
     if(y < 0 || y >= Y)
         return 0;
     return 1;
+}
+
+int getNeighbours(int x, int y, int X, int Y, int currentTimestep, int *buffer)
+{
+    int num_neighbours = 0;
+    if(x > 0)
+    {
+        // get left
+        num_neighbours += buffer[IDX(x-1, y, currentTimestep, X, Y)];
+
+        if(y > 0)
+            // get left down
+            num_neighbours += buffer[IDX(x-1, (y-1), currentTimestep, X, Y)];
+
+        if(y < Y-1)
+            // get left up
+            num_neighbours += buffer[IDX(x-1, (y+1), currentTimestep, X, Y)];
+    }
+    if(x < X-1)
+    {
+        // get right
+        num_neighbours += buffer[IDX(x+1, y, currentTimestep, X, Y)];
+
+        if(y > 0)
+            // get right down
+            num_neighbours += buffer[IDX(x+1, (y-1), currentTimestep, X, Y)];
+
+        if(y < Y-1)
+            // get right up
+            num_neighbours += buffer[IDX(x+1, (y+1), currentTimestep, X, Y)];
+    }
+    if(y > 0)
+        // get bottom
+        num_neighbours += buffer[IDX(x, (y-1), currentTimestep, X, Y)];
+    if(y < Y-1)
+        // get top
+        num_neighbours += buffer[IDX(x, (y+1), currentTimestep, X, Y)];
+    return num_neighbours;
 }
