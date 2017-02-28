@@ -169,7 +169,8 @@ int main(int argc, char** argv)
             idx = IDX(input_data[i] - grid.leftX + 1, input_data[i+1] - grid.leftY + 1, 0, grid.numX, grid.numY);
             buffer[idx] = 1;
         }
-        free(input_data);
+        if(size > 0)
+            free(input_data);
     }
 
     // Reading complete, should synchronize here?
@@ -186,7 +187,6 @@ int main(int argc, char** argv)
             neighbourPids[i] = -1;
         else
             MPI_Cart_rank(new_comm, coord, &neighbourPids[i]);
-        // printf("Pid %d (%d, %d), Neighbour %d Pid %d\n", pid, grid.Px, grid.Py, i, neighbourPids[i]);
     }
 
     MPI_Request request[8] = {0}, send_req[8];
@@ -310,10 +310,9 @@ int main(int argc, char** argv)
             num_processed += simulatePartialRow(y, 2, grid.numX - 2, grid.numX, grid.numY, currentTimestep, buffer);
 
         // MPI wait all
-        // printf("Waiting for receives...\n");
         for(int i=0; i<8; i++)
         {
-            if(request[i] != NULL)
+            if(neighbourPids[i] != -1)
                 MPI_Wait(&request[i], &recv_status[i]);
         }
 
@@ -382,7 +381,6 @@ void simulateHelper(int x, int y, int maxX, int maxY, int currentTimestep, int *
         // Check if this is inside
         if(isInside(neighbourX, neighbourY, maxX, maxY))
         {
-            // printf("%d/%d\n", IDX(neighbourX, neighbourY, currentTimestep, maxX, maxY), maxY * maxX * 2);
             if(buffer[IDX(neighbourX, neighbourY, currentTimestep, maxX, maxY)] == 1)
                 num_neighbours += 1;
         }
