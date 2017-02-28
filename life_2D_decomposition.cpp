@@ -197,8 +197,6 @@ int main(int argc, char** argv)
     MPI_Datatype colSlice;
     MPI_Type_vector(grid.numY - 2, 1, grid.numX, MPI_INT, &colSlice);
     MPI_Type_commit(&colSlice);
-    int *rightCol = (int*) malloc(sizeof(int) * (grid.numY - 2));
-    int  *leftCol = (int*) malloc(sizeof(int) * (grid.numY - 2));
 
     for(int iter = 0; iter < nIter; iter++)
     {
@@ -318,18 +316,6 @@ int main(int argc, char** argv)
             if(request[i] != NULL)
                 MPI_Wait(&request[i], &recv_status[i]);
         }
-        // MPI_Waitall(8, request, recv_status);
-        // printf("Received everything\n");
-
-        // // Put the left and right col at the correct locations.
-        // for(int y=1; y < grid.numY - 1; y++)
-        // {
-        //     idx = IDX(grid.numX - 1, y, currentTimestep, grid.numX, grid.numY);
-        //     buffer[idx] = rightCol[y-1];
-
-        //     idx = IDX(0, y, currentTimestep, grid.numX, grid.numY);
-        //     buffer[idx] = leftCol[y-1];
-        // }
 
 
         // Do computation for remaining elements.
@@ -351,27 +337,15 @@ int main(int argc, char** argv)
     }
 
     // Print the ans.
-    string output = "";
     for(int x = 1; x < grid.numX - 1; x++)
     {
         for(int y=1; y < grid.numY - 1; y++)
         {
             if(buffer[IDX(x, y, currentTimestep, grid.numX, grid.numY)] == 1)
             {
-                // printf("%d %d\n", x + grid.leftX - 1, y + grid.leftY - 1);
-                output += to_string(x + grid.leftX - 1) + " " + to_string(y + grid.leftY - 1) + "\n";
-                // fflush(stdout);
+                printf("%d %d\n", x + grid.leftX - 1, y + grid.leftY - 1);
+                fflush(stdout);
             }
-        }
-    }
-
-    for(int i=0; i<numProcessors; i++)
-    {
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(pid == i)
-        {
-            cout << output;
-            fflush(stdout);
         }
     }
 
